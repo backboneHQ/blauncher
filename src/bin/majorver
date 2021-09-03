@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# Returns the major version based on a semver.
+# first argument: semver (example: 1.3.0)
+# result: major (example: 1)
+function queryMajorVersion()
+{
+  local semver=$1
+  echo "$semver" | grep -oE '[0-9]*' | head -n 1
+}
+
+queryMajorVersion $1

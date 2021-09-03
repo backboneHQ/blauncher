@@ -1,0 +1,78 @@
+#!/usr/bin/env python
+
+import os
+import sys
+import argparse
+import json
+from blauncher import EnvModifier
+
+def tweakEnvironment(envFilePath, separator):
+    """
+    Output a tweaked environment to the stdout stream based on the json env file.
+    """
+    contents = {}
+    with open(envFilePath) as f:
+        contents = json.load(f)
+
+    # collecting all the environment names found under the json configuration
+    envNames = set()
+    for operationType in contents.keys():
+
+        # \TODO: unsetting environment variables is not supported. The reason
+        # is because we write out all the modifications through the stdout which
+        # currently does not have any support for expressing the unset of
+        # variables.
+        if 'unset' in operationType:
+            continue
+
+        for envName in contents[operationType].keys():
+            envNames.add(envName)
+
+    # creating an env modifier that is going to be used to
+    # resolve the environment
+    envModifier = EnvModifier(os.environ)
+
+    # tweaking the environment with the modifications coming from
+    # env json file.
+    envModifier.addFromDict(contents)
+
+    # resolving the environment
+    envResult = envModifier.generate()
+
+    # collecting the modified environments
+    filteredResult = {}
+    for envName in envNames:
+        filteredResult[envName] = envResult[envName]
+
+    # resulting to the stdout stream
+    for key, value in filteredResult.items():
+        sys.stdout.write('{key}{separator}{value}\n'.format(
+            key=key,
+            separator=separator,
+            value=value
+        ))
+
+
+# command help
+parser = argparse.ArgumentParser(
+    description='Outputs a tweaked environment based on the json env configuration'
+)
+
+parser.add_argument(
+    'envfile',
+    metavar='json',
+    type=str,
+    help='json file containing the environment variables following the EnvModifier convention'
+)
+
+parser.add_argument(
+    '--separator',
+    metavar='s',
+    default='=',
+    type=str,
+    help='separator to be used between the key and value (default: "=")'
+)
+
+if __name__ == "__main__":
+    args = parser.parse_args()
+    tweakEnvironment(args.envfile, args.separator)

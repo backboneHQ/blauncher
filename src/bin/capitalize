@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# Returns a capitalized string
+# first argument: string (example: abc)
+# result: string (example: Abc)
+function runCapitalize()
+{
+  local inputString=$1
+  echo ${inputString^}
+}
+
+runCapitalize $1

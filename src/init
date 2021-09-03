@@ -1,0 +1,60 @@
+#!/bin/bash
+
+#
+#                               [=========]
+#                    -==++""" .  /. . .  \ .  """++==-
+#             -+""   \   .. . .  | ..  . |  . .  .   /   ""+-
+#          /\  +-""   `-----=====\    /=====-----'   ""-+  /\
+#         / /                      ""=""                      \ \
+#       / /                                                     \ \
+#      //                            |                            \\
+#     /")                          \ | /                          ("\
+#     \o\                           \*/                           /o/
+#      \ )                       --**O**--                       ( /
+#                                   /*\
+#                                  / | \
+#                                    |
+#
+# Handles the execution of applications and their dependencies under
+# backbone environment.
+
+# getting current script folder
+dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# making sure $BLAUNCHER_CONFIG_ROOT is defined properly
+if ! [ -d "$BLAUNCHER_CONFIG_ROOT" ]; then
+  echo "blauncher error: Could not find directory defined by \$BLAUNCHER_CONFIG_ROOT" >&2
+fi
+
+# avoiding to prepended to the system path for every single bash session by making
+# sure bin is not included to the path yet.
+blauncherBinPath="$dir/bin:$BLAUNCHER_CONFIG_ROOT/wrapper/$BSYS_OS/$BSYS_OS_VERSION:$BLAUNCHER_CONFIG_ROOT/wrapper/$BSYS_OS:$BLAUNCHER_CONFIG_ROOT/wrapper"
+if ! [[ "$BLAUNCHER_BIN_PATH" == "$blauncherBinPath" && "$PATH" == "$BLAUNCHER_BIN_PATH:$PATH" ]]; then
+
+  export BLAUNCHER_BIN_PATH=$blauncherBinPath
+  export PATH="$BLAUNCHER_BIN_PATH:$PATH"
+
+  # prepending blauncher module to the python path
+  blauncherLib="$dir/lib"
+  if [ -z "$PYTHONPATH" ]; then
+    export PYTHONPATH="$blauncherLib"
+  else
+    export PYTHONPATH="$blauncherLib:$PYTHONPATH"
+  fi
+
+  # setting global environment variables
+  blauncherGlobalEnvPath="$BLAUNCHER_CONFIG_ROOT/env/init.json"
+  if [ -f "$blauncherGlobalEnvPath" ]; then
+    while IFS='=' read -r name value || [[ -n "$name" ]];
+    do
+      # convention followed by <ENV_NAME>=<ENV_VALUE>
+      export "$name"=$value
+    done < <(tweakenv "$blauncherGlobalEnvPath")
+  fi
+
+  # rez support (if available for the platform)
+  if [ -d "$REZ_LOCATION" ]; then
+    # sourcing auto-completion
+    source "$REZ_LOCATION/completion/complete.sh"
+  fi
+fi

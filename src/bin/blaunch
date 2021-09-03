@@ -1,0 +1,140 @@
+#!/usr/bin/env python
+
+import os
+import sys
+import argparse
+import blauncher
+import subprocess
+import bver
+
+class _CustomLauncherRunner(blauncher.LauncherRunner):
+
+    blauncherConfigRoot = os.path.join(
+        os.environ['BLAUNCHER_CONFIG_ROOT'],
+        "launcher"
+    )
+    bverConfigPath = os.environ['BVER_CONFIG_PATH']
+    bchooserEnvName = 'BLAUNCHER_SHOW_BCHOOSER'
+
+    def run(self, executableType, args, env, displayBChooser=False):
+        """
+        Hooking the execution to add support for the "addonchooser" interface.
+        """
+        software = self.software()
+
+        # letting the environment variable ($BVER_APP_ADDON_ENABLED) to override
+        # the enabled status of the addon
+        disabledAddons = []
+        enabledAddons = []
+        for addonName in sorted(software.addonNames()):
+            addon = software.addon(addonName)
+            addonEnabledEnv = addon.bverEnabledName(software)
+            if addonEnabledEnv in env:
+                addon.setOption('enabled', env.get(addonEnabledEnv, '1') == '1')
+
+            if addon.option('enabled'):
+                enabledAddons.append(addonName)
+            else:
+                disabledAddons.append(addonName)
+
+        # showing addon chooser
+        if displayBChooser:
+            process = subprocess.Popen(
+                'bchooser "{0}" "{1}"'.format(
+                    ' '.join(disabledAddons),
+                    ' '.join(enabledAddons),
+                ),
+                stdout=subprocess.PIPE,
+                shell=True
+            )
+            stdout, stderr = process.communicate()
+            enabledAddonNames = stdout[:-1].split(' ')
+            for addonName in software.addonNames():
+                addon = software.addon(addonName)
+                addon.setOption('enabled', (addon.name() in enabledAddonNames))
+
+        # running it
+        return super(_CustomLauncherRunner, self).run(
+            executableType,
+            args,
+            env
+        )
+
+    @staticmethod
+    def createSoftware(name, env):
+        """
+        Return a versioned software object.
+        """
+        # creating a bver parser to collect all the available softwares
+        bverLoader = bver.Loader.JsonLoader()
+        paths = _CustomLauncherRunner.bverConfigPath.split(os.pathsep)[::-1]
+        bverLoader.addFromJsonPaths(paths, activeVersionFromEnv=env)
+
+        # getting available softwares
+        softwares = bverLoader.softwares(env)
+
+        # returning specific software
+        return bver.Query(softwares).softwareByName(name)
+
+
+# command help
+parser = argparse.ArgumentParser(
+    add_help=False,
+    description='Launches an application'
+)
+
+parser.add_argument(
+    'name',
+    type=str,
+    help='Application name that should be initialized'
+)
+
+parser.add_argument(
+    '--bchooser',
+    default=False,
+    action="store_true",
+    help='Displays the addon chooser interface before loading the application.'
+)
+
+if __name__ == "__main__":
+    args, unknownArgs = parser.parse_known_args()
+    env = dict(os.environ)
+
+    # at this point we want to freeze
+    # the versions
+    env['BVER_INIT_MODE'] = 'DONT_OVERRIDE'
+    env['BVER_VERBOSE'] = '1'
+
+    displayBChooser = args.bchooser
+    bchooserEnv = _CustomLauncherRunner.bchooserEnvName
+    if bchooserEnv in env:
+        displayBChooser = True
+        del env[bchooserEnv]
+
+    # executable type
+    executableType = "default"
+    nameArgs = args.name.split("/")
+    if len(nameArgs) > 1:
+        executableType = '/'.join(nameArgs[1:])
+
+    # creating a software to pass to the runner
+    software = _CustomLauncherRunner.createSoftware(
+        nameArgs[0],
+        env
+    )
+
+    # creating a launcher runner
+    launcherRunner = _CustomLauncherRunner(
+        software,
+        _CustomLauncherRunner.blauncherConfigRoot
+    )
+
+    # running it
+    sys.exit(
+        launcherRunner.run(
+            executableType,
+            unknownArgs,
+            env,
+            displayBChooser
+        ).exitStatus()
+    )

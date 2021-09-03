@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# Shows a dialogue listing addons as checkboxes
+#
+# first argument: string containing the disabled addons (separated by space)
+# second argument: string containing the enabled addons (separated by space)
+# result: string containing the addons that were enabled in the end (separated by space)
+function showBChooser()
+{
+
+  # arguments
+  local disabledAddons=$1
+  local enabledAddons=$2
+
+  # disabled addons
+  local disabledAddonsString=""
+  for disabledAddon in $disabledAddons ; do
+    disabledAddonsString+="FALSE $disabledAddon "
+  done;
+
+  # enabled addons
+  local enabledAddonsString=""
+  for enabledAddon in $enabledAddons ; do
+    enabledAddonsString+="TRUE $enabledAddon "
+  done;
+
+  # since we are setting environments for zenity, lets run it through a subshell
+  (
+    # this is necessary to avoid an issue in kde that does not allow checkboxes to be toggled
+    # properly (due some kde skin issue on top of gtk)
+    if [ "$BSYS_OS_VERSION" == "centos7" ]; then
+      export GTK_THEME="/usr/share/themes/Default/gtk-3.0/gtk-keys.css"
+    fi
+
+    # showing a dialogue
+    local title="Launcher chooser"
+    local text="Select the addons that you want to load:"
+    echo $(zenity --title "$title" --text "$text" --list --checklist --column "Enable" \
+     --column "Addon Name" $disabledAddonsString $enabledAddonsString --separator=" ")
+  )
+}
+
+showBChooser "$1" "$2"

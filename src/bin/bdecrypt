@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# Decrypt a string (for encryption @see bencrypt)
+# first argument encrypted string: string
+# second argument key used for encryption: string (example: 1234)
+# result unencrypted input: string
+function runBdecrypt()
+{
+  local inputString=$1
+  local inputKey=$2
+
+  echo $inputString | openssl enc -aes-256-cbc -a -d -salt -pbkdf2 -pass pass:$inputKey
+}
+
+runBdecrypt $1 $2
