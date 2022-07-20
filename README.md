@@ -1,1 +1,2 @@
 # blauncher
+Application launching module
