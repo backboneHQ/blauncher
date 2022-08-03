@@ -1,3 +1,4 @@
+import os
 import re
 import sys
 import select
@@ -11,7 +12,7 @@ class ProcessExecution(object):
     # regex: any alpha numeric, underscore and dash characters are allowed.
     __validateShellArgRegex = re.compile("^[\w_-]*$")
 
-    def __init__(self, args, env=None, shell=True, cwd=None, redirectStderrToStdout=False):
+    def __init__(self, args, env=None, shell=True, cwd=None, redirectStderrToStdout=False, callingWrapper=False):
         """
         Create a ProcessExecution object.
 
@@ -21,6 +22,7 @@ class ProcessExecution(object):
         self.__stderr = []
         self.__shell = shell
         self.__cwd = cwd
+        self.__callingWrapper = callingWrapper
         self.__redirectStderrToStdout = redirectStderrToStdout
 
         self.__setArgs(args)
@@ -68,6 +70,12 @@ class ProcessExecution(object):
         Return a boolean telling if the stderr stream should be redirected to stdout.
         """
         return self.__redirectStderrToStdout
+
+    def callingWrapper(self):
+        """
+        Return a boolean telling if the execution is calling another wrapper (useful when running on cygwin).
+        """
+        return self.__callingWrapper
 
     def executionSuccess(self):
         """
@@ -123,6 +131,41 @@ class ProcessExecution(object):
         if self.__process.stderr:
             self.__process.stderr.close()
 
+    @classmethod
+    def convertToCygwin(cls, value):
+        """
+        Utility to convert the input value from windows to cygwin style.
+        """
+        # normalizing path separators during the processing (for convenience)
+        value = value.replace('\\', '/')
+
+        # converting to drive letter
+        value = re.sub(r"([a-zA-Z]{1}):\/", r"/cygdrive/\g<1>/", value)
+
+        # normalizing env path separators
+        value = value.replace(';/cygdrive/', ':/cygdrive/')
+
+        return value
+
+    @classmethod
+    def convertFromCygwin(cls, value):
+        """
+        Utility to convert the input value from cygwin back to windows style.
+        """
+        # normalizing path separators during the processing (for convenience)
+        value = value.replace('\\', '/')
+
+        # converting to drive letter
+        value = re.sub(r"(\/cygdrive\/)([a-zA-Z]{1})\/", r"\g<2>:/", value)
+
+        # normalizing env path separators
+        value = re.sub(r"(:)([a-zA-Z]{1})(:)", r";\g<2>:", value)
+
+        # reverting back to the windows style
+        value = value.replace('/', '\\')
+
+        return value
+
     def __readProcessOutput(self, reads):
         """
         Read the process output by looking at stdout and stderr.
@@ -173,6 +216,14 @@ class ProcessExecution(object):
         """
         stderrStream = subprocess.STDOUT if self.redirectStderrToStdout() else subprocess.PIPE
 
+        env = self.env()
+        if os.environ.get('BSYS_OS') == 'windows' and not self.callingWrapper():
+            for key, value in env.items():
+                if key == 'PATH':
+                    env[key] = value
+                else:
+                    env[key] = self.convertFromCygwin(value)
+
         executableArgs = ' '.join(map(str, self.__sanitizeShellArgs(self.args()))) if self.isShell() else self.args()
         self.__process = subprocess.Popen(
             executableArgs,
@@ -190,7 +241,7 @@ class ProcessExecution(object):
         """
         read = stream.readline()
         if not isinstance(read, str):
-            read = read.decode("utf_8")
+            read = read.decode("utf_8", errors="ignore")
         return read
 
     @staticmethod
@@ -201,12 +252,13 @@ class ProcessExecution(object):
         result = []
 
         for index, arg in enumerate(args):
-
             # we need to avoid to escape the first argument otherwise, it will be
             # interpreted as string rather than a command.
             if index == 0 or ProcessExecution.__validateShellArgRegex.match(arg):
                 result.append(arg)
             else:
+                if os.environ.get('BSYS_OS') == 'windows':
+                    arg = ProcessExecution.convertFromCygwin(arg)
                 result.append('"{}"'.format(arg.replace('"', '\\"')))
 
         return result

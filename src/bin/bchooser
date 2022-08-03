@@ -1,43 +1,241 @@
-#!/bin/bash
+#!/usr/bin/env bpython3
 
-# Shows a dialogue listing addons as checkboxes
-#
-# first argument: string containing the disabled addons (separated by space)
-# second argument: string containing the enabled addons (separated by space)
-# result: string containing the addons that were enabled in the end (separated by space)
-function showBChooser()
-{
+import os
+import sys
+import json
+from PySide2 import QtCore, QtWidgets, QtGui
 
-  # arguments
-  local disabledAddons=$1
-  local enabledAddons=$2
+class BChooserWindow(QtWidgets.QMainWindow):
+    """
+    Interface used to select the addons (--bchooser).
+    """
 
-  # disabled addons
-  local disabledAddonsString=""
-  for disabledAddon in $disabledAddons ; do
-    disabledAddonsString+="FALSE $disabledAddon "
-  done;
+    def __init__(self, appName, enabledAddons, disabledAddons):
+        """
+        Create a chooser window object.
+        """
+        super(BChooserWindow, self).__init__()
+        self.__appName = appName
+        self.__success = False
 
-  # enabled addons
-  local enabledAddonsString=""
-  for enabledAddon in $enabledAddons ; do
-    enabledAddonsString+="TRUE $enabledAddon "
-  done;
+        scrollArea = QtWidgets.QScrollArea()
+        scrollArea.setFocusPolicy(QtCore.Qt.NoFocus)
+        scrollArea.setWidgetResizable(True)
+        layout = QtWidgets.QVBoxLayout()
 
-  # since we are setting environments for zenity, lets run it through a subshell
-  (
-    # this is necessary to avoid an issue in kde that does not allow checkboxes to be toggled
-    # properly (due some kde skin issue on top of gtk)
-    if [ "$BSYS_OS_VERSION" == "centos7" ]; then
-      export GTK_THEME="/usr/share/themes/Default/gtk-3.0/gtk-keys.css"
-    fi
+        scrollLayout = QtWidgets.QVBoxLayout()
+        scrollContainer = QtWidgets.QWidget()
+        scrollContainer.setLayout(scrollLayout)
+        scrollArea.setWidget(scrollContainer)
 
-    # showing a dialogue
-    local title="Launcher chooser"
-    local text="Select the addons that you want to load:"
-    echo $(zenity --title "$title" --text "$text" --list --checklist --column "Enable" \
-     --column "Addon Name" $disabledAddonsString $enabledAddonsString --separator=" ")
-  )
-}
+        actionsLayout = QtWidgets.QHBoxLayout()
 
-showBChooser "$1" "$2"
+        self.__presetDropdown = QtWidgets.QComboBox()
+        self.__presetDropdown.activated.connect(self.__onPresetChanged)
+        actionsLayout.addWidget(self.__presetDropdown)
+
+        disableAllButton = QtWidgets.QPushButton('Disable All')
+        disableAllButton.clicked.connect(self.__onDisableAll)
+        actionsLayout.addWidget(disableAllButton)
+
+        enableAllButton = QtWidgets.QPushButton('Enable All')
+        enableAllButton.clicked.connect(self.__onEnableAll)
+        actionsLayout.addWidget(enableAllButton)
+
+        layout.addLayout(actionsLayout)
+        layout.addWidget(scrollArea)
+
+        contentLayout = QtWidgets.QVBoxLayout()
+
+        self.__addonsCheckBoxes = []
+        for addon in sorted(enabledAddons) + sorted(disabledAddons):
+            addonWidget = QtWidgets.QCheckBox(addon)
+            addonWidget.setChecked(addon in enabledAddons)
+            contentLayout.addWidget(addonWidget)
+            self.__addonsCheckBoxes.append(addonWidget)
+
+        scrollLayout.addLayout(contentLayout)
+        scrollLayout.addStretch()
+
+        actionAreaLayout = QtWidgets.QHBoxLayout()
+
+        savePresetButton = QtWidgets.QPushButton('Save preset...')
+        savePresetButton.clicked.connect(self.__onSavePreset)
+
+        runButton = QtWidgets.QPushButton('Run {}'.format(appName))
+        runButton.setStyleSheet('QPushButton {font-weight: bold}')
+        runButton.clicked.connect(self.__onRun)
+        actionAreaLayout.addWidget(savePresetButton)
+        actionAreaLayout.addWidget(runButton, 100)
+
+        layout.addLayout(actionAreaLayout)
+        placeHolder = QtWidgets.QWidget()
+        placeHolder.setLayout(layout)
+        self.setCentralWidget(placeHolder)
+        self.setWindowTitle("Addons available for {}".format(appName))
+        self.resize(640, 420)
+
+        self.__populatePresets()
+
+    def success(self):
+        """
+        Return a boolean telling if the execution was successful.
+        """
+        return self.__success
+
+    def __populatePresets(self):
+        """
+        Populate the list of presets.
+        """
+        self.__presetDropdown.clear()
+        self.__presetDropdown.addItem('Saved presets')
+
+        if not os.environ.get('BSYS_LOCAL_DATA', ''):
+            return
+
+        bchooserConfigPath = os.path.join(os.environ['BSYS_LOCAL_DATA'], 'bchooser.json')
+        if not os.path.exists(bchooserConfigPath):
+            return
+
+        content = {}
+        with open(bchooserConfigPath) as f:
+            content = json.load(f)
+
+        if not self.__appName in content:
+            return
+
+        self.__presetDropdown.addItems(sorted(content[self.__appName].keys()))
+
+    def __onRun(self):
+        """
+        Callback executed when the run button is pressed.
+        """
+        self.__success = True
+        self.close()
+
+    def __onDisableAll(self):
+        """
+        Callback executed when disable all button is pressed.
+        """
+        for checkBox in self.__addonsCheckBoxes:
+            checkBox.setChecked(False)
+
+    def __onPresetChanged(self, index):
+        """
+        Callback executed when previous selection button is pressed.
+        """
+        if index == 0:
+            return
+
+        if not os.environ.get('BSYS_LOCAL_DATA', ''):
+            return
+
+        bchooserConfigPath = os.path.join(os.environ['BSYS_LOCAL_DATA'], 'bchooser.json')
+        if not os.path.exists(bchooserConfigPath):
+            return
+
+        content = {}
+        with open(bchooserConfigPath) as f:
+            content = json.load(f)
+
+        if not self.__appName in content:
+            return
+
+        for checkBox in self.__addonsCheckBoxes:
+            checkBox.setChecked(checkBox.text() in content[self.__appName][self.__presetDropdown.itemText(index)])
+
+    def __onEnableAll(self):
+        """
+        Callback executed when enable all button is pressed.
+        """
+        for checkBox in self.__addonsCheckBoxes:
+            checkBox.setChecked(True)
+
+    def __onSavePreset(self):
+        """
+        Callback executed when save preset button is pressed.
+        """
+        presetName, ok = QtWidgets.QInputDialog().getText(
+            self,
+            'Save Preset',
+            'Preset name:',
+            QtWidgets.QLineEdit.Normal,
+            ''
+        )
+
+        if not (ok and presetName):
+            return
+
+        # storing selection
+        if os.environ.get('BSYS_LOCAL_DATA', ''):
+            bchooserConfigPath = os.path.join(os.environ['BSYS_LOCAL_DATA'], 'bchooser.json')
+            if not os.path.exists(os.path.dirname(bchooserConfigPath)):
+                os.makedirs(os.path.dirname(bchooserConfigPath), exist_ok=True)
+
+            content = {}
+            if os.path.exists(bchooserConfigPath):
+                with open(bchooserConfigPath) as f:
+                    content = json.load(f)
+
+            if self.__appName not in content:
+                content[self.__appName] = {}
+
+            with open(bchooserConfigPath, 'w') as f:
+                content[self.__appName][presetName] = self.__selectedAddons()
+                json.dump(content, f)
+
+            self.__populatePresets()
+            self.__presetDropdown.setCurrentText(presetName)
+
+    def __selectedAddons(self):
+        """
+        Return a list of selected addons.
+        """
+        return list(
+            map(
+                lambda y: y.text(),
+                filter(
+                    lambda x: x.isChecked(),
+                    self.__addonsCheckBoxes
+                )
+            )
+        )
+
+    def closeEvent(self, event):
+        """
+        Print to the stdout selected (checked) addons and closes the window.
+        """
+        event.accept()
+        sys.stdout.write(' '.join(self.__selectedAddons()))
+        sys.stdout.flush()
+
+
+if __name__ == '__main__':
+    app = QtWidgets.QApplication(sys.argv)
+
+    app.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
+
+    # dark palette
+    palette = QtGui.QPalette()
+    palette.setColor(QtGui.QPalette.Window, QtGui.QColor(53, 53, 53))
+    palette.setColor(QtGui.QPalette.WindowText, QtCore.Qt.white)
+    palette.setColor(QtGui.QPalette.Base, QtGui.QColor(25, 25, 25))
+    palette.setColor(QtGui.QPalette.AlternateBase, QtGui.QColor(53, 53, 53))
+    palette.setColor(QtGui.QPalette.ToolTipBase, QtCore.Qt.black)
+    palette.setColor(QtGui.QPalette.ToolTipText, QtCore.Qt.white)
+    palette.setColor(QtGui.QPalette.Text, QtCore.Qt.white)
+    palette.setColor(QtGui.QPalette.Button, QtGui.QColor(53, 53, 53))
+    palette.setColor(QtGui.QPalette.ButtonText, QtCore.Qt.white)
+    palette.setColor(QtGui.QPalette.BrightText, QtCore.Qt.red)
+    palette.setColor(QtGui.QPalette.Link, QtGui.QColor(42, 130, 218))
+    palette.setColor(QtGui.QPalette.Highlight, QtGui.QColor(42, 130, 218))
+    palette.setColor(QtGui.QPalette.HighlightedText, QtCore.Qt.black)
+    app.setPalette(palette)
+
+    enabledAddons = tuple(filter(lambda x: len(x), sys.argv[-1].strip().split(' ')))
+    disabledAddons = tuple(filter(lambda x: len(x), sys.argv[-2].strip().split(' ')))
+    appName = sys.argv[-3]
+
+    window = BChooserWindow(appName, enabledAddons, disabledAddons)
+    window.show()
+    sys.exit(app.exec_() or int(not window.success()))

@@ -1,3 +1,4 @@
+import sys
 import subprocess
 
 class ResolveError(Exception):
@@ -35,7 +36,7 @@ class ResourceResolver(object):
         process = subprocess.Popen(
             'echo {0}'.format(value),
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=sys.stderr,
             env=self.env(),
             shell=True
         )

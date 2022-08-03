@@ -7,7 +7,16 @@ import blauncher
 import subprocess
 import bver
 
+class _CustomLauncherRunnerError(Exception):
+    """Base exception for the custom launcher runner."""
+
+class _CustomLauncherRunnerBChooserError(_CustomLauncherRunnerError):
+    """Custom launcher runner bchooser Error."""
+
 class _CustomLauncherRunner(blauncher.LauncherRunner):
+    """
+    Implement a custom launcher runner to launch the process.
+    """
 
     blauncherConfigRoot = os.path.join(
         os.environ['BLAUNCHER_CONFIG_ROOT'],
@@ -16,7 +25,7 @@ class _CustomLauncherRunner(blauncher.LauncherRunner):
     bverConfigPath = os.environ['BVER_CONFIG_PATH']
     bchooserEnvName = 'BLAUNCHER_SHOW_BCHOOSER'
 
-    def run(self, executableType, args, env, displayBChooser=False):
+    def run(self, executableType, args, env, displayBChooser=False, executableBin=None, queryResolved=False):
         """
         Hooking the execution to add support for the "addonchooser" interface.
         """
@@ -39,8 +48,11 @@ class _CustomLauncherRunner(blauncher.LauncherRunner):
 
         # showing addon chooser
         if displayBChooser:
+            # adding a white-space padding to the chooser arguments to make
+            # sure the arguments are always supplied even when empty
             process = subprocess.Popen(
-                'bchooser "{0}" "{1}"'.format(
+                'bchooser "{0}" "{1} " "{2} "'.format(
+                    software.name(),
                     ' '.join(disabledAddons),
                     ' '.join(enabledAddons),
                 ),
@@ -48,7 +60,14 @@ class _CustomLauncherRunner(blauncher.LauncherRunner):
                 shell=True
             )
             stdout, stderr = process.communicate()
-            enabledAddonNames = stdout[:-1].split(' ')
+
+            # in case the user has decided to cancel the execution
+            if process.returncode:
+                raise _CustomLauncherRunnerBChooserError(
+                    'BChooser has been cancelled'
+                )
+
+            enabledAddonNames = stdout.decode('utf-8').strip().split(' ')
             for addonName in software.addonNames():
                 addon = software.addon(addonName)
                 addon.setOption('enabled', (addon.name() in enabledAddonNames))
@@ -57,7 +76,9 @@ class _CustomLauncherRunner(blauncher.LauncherRunner):
         return super(_CustomLauncherRunner, self).run(
             executableType,
             args,
-            env
+            env,
+            executableBin,
+            queryResolved
         )
 
     @staticmethod
@@ -96,14 +117,28 @@ parser.add_argument(
     help='Displays the addon chooser interface before loading the application.'
 )
 
+parser.add_argument(
+    '--bexec',
+    default=None,
+    nargs=1,
+    help='When defined executes the binary specified by this argument under the configuration (making possible to run arbitrary executables under the configuration with environment/addons)'
+)
+
+parser.add_argument(
+    '--bquery',
+    default=False,
+    action="store_true",
+    help='When defined returns the resolved path for the resource'
+)
+
 if __name__ == "__main__":
     args, unknownArgs = parser.parse_known_args()
     env = dict(os.environ)
 
-    # at this point we want to freeze
-    # the versions
-    env['BVER_INIT_MODE'] = 'DONT_OVERRIDE'
-    env['BVER_VERBOSE'] = '1'
+    # at this point we want to freeze the versions
+    if int(env.get('BLAUNCHER_FREEZE_VERSIONS', '1')) != 0:
+        env['BVER_INIT_MODE'] = 'DONT_OVERRIDE'
+        env['BVER_VERBOSE'] = '1'
 
     displayBChooser = args.bchooser
     bchooserEnv = _CustomLauncherRunner.bchooserEnvName
@@ -129,12 +164,18 @@ if __name__ == "__main__":
         _CustomLauncherRunner.blauncherConfigRoot
     )
 
-    # running it
-    sys.exit(
-        launcherRunner.run(
+    try:
+        exitCode = launcherRunner.run(
             executableType,
             unknownArgs,
             env,
-            displayBChooser
+            displayBChooser,
+            args.bexec[0] if args.bexec else None,
+            args.bquery
         ).exitStatus()
-    )
+
+    except _CustomLauncherRunnerBChooserError:
+        exitCode = 1
+
+    # running it
+    sys.exit(exitCode)

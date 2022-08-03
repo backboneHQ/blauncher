@@ -24,6 +24,7 @@ class Bin(Launcher):
 
         executable = self.__resourceResolver.resolve(self.config('executable')[executableType])
         args = self.config('args') if 'args' in self.configNames() else []
+        callingWrapper = self.config('callingWrapper') if 'callingWrapper' in self.configNames() else False
 
         # in case current working directory is specified
         cwd = self.config('cwd') if 'cwd' in self.configNames() else None
@@ -39,7 +40,8 @@ class Bin(Launcher):
             processArgs,
             self.env(),
             shell=True,
-            cwd=cwd
+            cwd=cwd,
+            callingWrapper=callingWrapper
         )
 
     @classmethod

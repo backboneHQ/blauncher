@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# utility to execute blaunch controlling session mode
+if [[ "$BLAUNCHER_SESSION_MODE" == "new" ]]; then
+  exec setsid blaunch "$@"
+else
+  exec blaunch "$@"
+fi

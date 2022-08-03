@@ -40,7 +40,7 @@ class LauncherRunner(object):
         """
         return self.__launcherConfigDir
 
-    def run(self, executableType, args=[], env=None):
+    def run(self, executableType, args=[], env=None, executableBin=None, queryResolved=False):
         """
         Launch an application.
         """
@@ -67,6 +67,18 @@ class LauncherRunner(object):
 
         loader.loadFromJsonFile(applicationConfiguration)
         launcher = loader.launcher(env)
+
+        # when executable bin is defined we replace the executable
+        # to the executable that has been specified
+        if executableBin:
+            launcher.config('executable')[executableType] = executableBin
+
+        # otherwise, if query resovled is specified then printing out
+        # the resolved executable
+        elif queryResolved:
+            launcher.config('executable')[executableType] = "echo {}".format(
+                launcher.config('executable')[executableType]
+            )
 
         # running launcher
         return launcher.run(executableType)
