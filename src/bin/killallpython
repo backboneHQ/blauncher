@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# Similar to killall command but supporting python running scripts
+# first argument: scriptname (example: myscript)
+function killallpython()
+{
+  local scriptName=$1
+  for pid in $(ps -a | grep python | awk '{ print $1 }'); do
+
+      # in case the process has been terminated we skip it
+      if [[ ! -f "/proc/$pid/cmdline" ]]; then
+          continue
+      fi
+
+      # otherwise, trying to find if there is a python script running
+      foundScriptName=$(cat /proc/$pid/cmdline | xargs -0 echo | awk '{ print $2 }' | grep $scriptName)
+      if [[ ! -z "$foundScriptName" ]]; then
+          kill -9 $pid
+      fi
+  done
+}
+
+killallpython $1

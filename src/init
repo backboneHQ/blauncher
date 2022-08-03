@@ -51,10 +51,4 @@ if ! [[ "$BLAUNCHER_BIN_PATH" == "$blauncherBinPath" && "$PATH" == "$BLAUNCHER_B
       export "$name"=$value
     done < <(tweakenv "$blauncherGlobalEnvPath")
   fi
-
-  # rez support (if available for the platform)
-  if [ -d "$REZ_LOCATION" ]; then
-    # sourcing auto-completion
-    source "$REZ_LOCATION/completion/complete.sh"
-  fi
 fi
