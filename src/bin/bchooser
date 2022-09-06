@@ -17,6 +17,7 @@ class BChooserWindow(QtWidgets.QMainWindow):
         super(BChooserWindow, self).__init__()
         self.__appName = appName
         self.__success = False
+        self.__defaultEnabled = enabledAddons
 
         scrollArea = QtWidgets.QScrollArea()
         scrollArea.setFocusPolicy(QtCore.Qt.NoFocus)
@@ -24,15 +25,38 @@ class BChooserWindow(QtWidgets.QMainWindow):
         layout = QtWidgets.QVBoxLayout()
 
         scrollLayout = QtWidgets.QVBoxLayout()
+        scrollLayout.setMargin(0)
         scrollContainer = QtWidgets.QWidget()
+        scrollContainer.setObjectName('scrollContainer')
         scrollContainer.setLayout(scrollLayout)
         scrollArea.setWidget(scrollContainer)
 
+        presetLayout = QtWidgets.QHBoxLayout()
         actionsLayout = QtWidgets.QHBoxLayout()
 
         self.__presetDropdown = QtWidgets.QComboBox()
         self.__presetDropdown.activated.connect(self.__onPresetChanged)
-        actionsLayout.addWidget(self.__presetDropdown)
+        presetLayout.addWidget(self.__presetDropdown, 100)
+
+        savePresetButton = QtWidgets.QPushButton('Save preset')
+        savePresetButton.clicked.connect(self.__onSavePreset)
+        savePresetButton.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_DialogSaveButton))
+        presetLayout.addWidget(savePresetButton)
+
+        removePresetButton = QtWidgets.QPushButton('Remove preset')
+        removePresetButton.clicked.connect(self.__onRemovePreset)
+        removePresetButton.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_DialogCancelButton))
+        presetLayout.addWidget(removePresetButton)
+
+        addonsListLayout = QtWidgets.QVBoxLayout()
+        addonsListLayout.setMargin(0)
+        addonsListGroupBox = QtWidgets.QGroupBox('')
+        addonsListGroupBox.setLayout(addonsListLayout)
+
+        defaultButton = QtWidgets.QPushButton('Default preset')
+        defaultButton.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_DialogApplyButton))
+        defaultButton.clicked.connect(self.__onDefault)
+        presetLayout.addWidget(defaultButton)
 
         disableAllButton = QtWidgets.QPushButton('Disable All')
         disableAllButton.clicked.connect(self.__onDisableAll)
@@ -41,9 +65,12 @@ class BChooserWindow(QtWidgets.QMainWindow):
         enableAllButton = QtWidgets.QPushButton('Enable All')
         enableAllButton.clicked.connect(self.__onEnableAll)
         actionsLayout.addWidget(enableAllButton)
+        actionsLayout.addStretch()
 
-        layout.addLayout(actionsLayout)
-        layout.addWidget(scrollArea)
+        layout.addLayout(presetLayout)
+        addonsListLayout.addLayout(actionsLayout)
+        addonsListLayout.addWidget(scrollArea)
+        layout.addWidget(addonsListGroupBox, 100)
 
         contentLayout = QtWidgets.QVBoxLayout()
 
@@ -58,14 +85,10 @@ class BChooserWindow(QtWidgets.QMainWindow):
         scrollLayout.addStretch()
 
         actionAreaLayout = QtWidgets.QHBoxLayout()
-
-        savePresetButton = QtWidgets.QPushButton('Save preset...')
-        savePresetButton.clicked.connect(self.__onSavePreset)
-
         runButton = QtWidgets.QPushButton('Run {}'.format(appName))
         runButton.setStyleSheet('QPushButton {font-weight: bold}')
+        runButton.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_ArrowForward))
         runButton.clicked.connect(self.__onRun)
-        actionAreaLayout.addWidget(savePresetButton)
         actionAreaLayout.addWidget(runButton, 100)
 
         layout.addLayout(actionAreaLayout)
@@ -88,7 +111,7 @@ class BChooserWindow(QtWidgets.QMainWindow):
         Populate the list of presets.
         """
         self.__presetDropdown.clear()
-        self.__presetDropdown.addItem('Saved presets')
+        self.__presetDropdown.addItem('Presets')
 
         if not os.environ.get('BSYS_LOCAL_DATA', ''):
             return
@@ -120,11 +143,19 @@ class BChooserWindow(QtWidgets.QMainWindow):
         for checkBox in self.__addonsCheckBoxes:
             checkBox.setChecked(False)
 
+    def __onDefault(self):
+        """
+        Callback executed when default button is pressed.
+        """
+        for checkBox in self.__addonsCheckBoxes:
+            checkBox.setChecked(checkBox.text() in self.__defaultEnabled)
+
     def __onPresetChanged(self, index):
         """
         Callback executed when previous selection button is pressed.
         """
         if index == 0:
+            self.__onDefault()
             return
 
         if not os.environ.get('BSYS_LOCAL_DATA', ''):
@@ -150,6 +181,39 @@ class BChooserWindow(QtWidgets.QMainWindow):
         """
         for checkBox in self.__addonsCheckBoxes:
             checkBox.setChecked(True)
+
+    def __onRemovePreset(self):
+        """
+        Callback executed when remove preset button is pressed.
+        """
+        if not self.__presetDropdown.currentIndex():
+            QtWidgets.QMessageBox.critical(
+                self,
+                'Remove preset error',
+                'Please select a valid preset!',
+                QtWidgets.QMessageBox.Ok
+            )
+            return
+
+        # storing selection
+        if os.environ.get('BSYS_LOCAL_DATA', ''):
+            bchooserConfigPath = os.path.join(os.environ['BSYS_LOCAL_DATA'], 'bchooser.json')
+            if not os.path.exists(os.path.dirname(bchooserConfigPath)):
+                os.makedirs(os.path.dirname(bchooserConfigPath), exist_ok=True)
+
+            content = {}
+            if os.path.exists(bchooserConfigPath):
+                with open(bchooserConfigPath) as f:
+                    content = json.load(f)
+
+            currentPreset = self.__presetDropdown.currentText()
+            if self.__appName in content and currentPreset in content[self.__appName]:
+                del content[self.__appName][currentPreset]
+
+            with open(bchooserConfigPath, 'w') as f:
+                json.dump(content, f)
+
+            self.__populatePresets()
 
     def __onSavePreset(self):
         """
@@ -231,6 +295,8 @@ if __name__ == '__main__':
     palette.setColor(QtGui.QPalette.Highlight, QtGui.QColor(42, 130, 218))
     palette.setColor(QtGui.QPalette.HighlightedText, QtCore.Qt.black)
     app.setPalette(palette)
+
+    app.setStyleSheet("QGroupBox, QWidget#scrollContainer {background-color: #232323}")
 
     enabledAddons = tuple(filter(lambda x: len(x), sys.argv[-1].strip().split(' ')))
     disabledAddons = tuple(filter(lambda x: len(x), sys.argv[-2].strip().split(' ')))
