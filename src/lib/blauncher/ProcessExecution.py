@@ -140,9 +140,9 @@ class ProcessExecution(object):
         ignoreVarNames = list(map(lambda x: x.upper(), cls.__envConversionIgnoreNames(env)))
         for key, value in env.items():
             if key == 'PATH' or key.upper() in ignoreVarNames:
-                env[key] = value
+                result[key] = value
             else:
-                env[key] = cls.convertToCygwin(value)
+                result[key] = cls.convertToCygwin(value)
 
         return result
 
@@ -155,9 +155,9 @@ class ProcessExecution(object):
         ignoreVarNames = list(map(lambda x: x.upper(), cls.__envConversionIgnoreNames(env)))
         for key, value in env.items():
             if key == 'PATH' or key.upper() in ignoreVarNames:
-                env[key] = value
+                result[key] = value
             else:
-                env[key] = cls.convertFromCygwin(value)
+                result[key] = cls.convertFromCygwin(value)
 
         return result
 
