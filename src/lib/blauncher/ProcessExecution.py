@@ -132,6 +132,36 @@ class ProcessExecution(object):
             self.__process.stderr.close()
 
     @classmethod
+    def envToCygwin(cls, env):
+        """
+        Utility to return an environment from windows back to cygwin style.
+        """
+        result = {}
+        ignoreVarNames = list(map(lambda x: x.upper(), cls.__envConversionIgnoreNames(env)))
+        for key, value in env.items():
+            if key == 'PATH' or key.upper() in ignoreVarNames:
+                env[key] = value
+            else:
+                env[key] = cls.convertToCygwin(value)
+
+        return result
+
+    @classmethod
+    def envFromCygwin(cls, env):
+        """
+        Utility to return an environment from cygwin back to windows style.
+        """
+        result = {}
+        ignoreVarNames = list(map(lambda x: x.upper(), cls.__envConversionIgnoreNames(env)))
+        for key, value in env.items():
+            if key == 'PATH' or key.upper() in ignoreVarNames:
+                env[key] = value
+            else:
+                env[key] = cls.convertFromCygwin(value)
+
+        return result
+
+    @classmethod
     def convertToCygwin(cls, value):
         """
         Utility to convert the input value from windows to cygwin style.
@@ -218,11 +248,7 @@ class ProcessExecution(object):
 
         env = self.env()
         if os.environ.get('BSYS_OS') == 'windows' and not self.callingWrapper():
-            for key, value in env.items():
-                if key == 'PATH':
-                    env[key] = value
-                else:
-                    env[key] = self.convertFromCygwin(value)
+            env = self.envFromCygwin(env)
 
         executableArgs = ' '.join(map(str, self.__sanitizeShellArgs(self.args()))) if self.isShell() else self.args()
         self.__process = subprocess.Popen(
@@ -233,6 +259,13 @@ class ProcessExecution(object):
             env=self.env(),
             cwd=self.cwd()
         )
+
+    @classmethod
+    def __envConversionIgnoreNames(cls, env):
+        """
+        Return a list of environment variables that should not be converted.
+        """
+        return list(env.get('BLAUNCHER_WRAPPER_ENV_IGNORE_CONVERSION_NAMES', '').split(' '))
 
     @staticmethod
     def __streamValue(stream):
