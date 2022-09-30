@@ -256,7 +256,7 @@ class ProcessExecution(object):
             stdout=subprocess.PIPE,
             stderr=stderrStream,
             shell=self.isShell(),
-            env=self.env(),
+            env=env,
             cwd=self.cwd()
         )
 
