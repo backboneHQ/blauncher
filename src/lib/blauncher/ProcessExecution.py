@@ -173,7 +173,11 @@ class ProcessExecution(object):
         value = re.sub(r"([a-zA-Z]{1}):\/", r"/cygdrive/\g<1>/", value)
 
         # normalizing env path separators
+        # drive letters
         value = value.replace(';/cygdrive/', ':/cygdrive/')
+
+        # UNC paths
+        value = value.replace(';//', '://')
 
         return value
 
@@ -189,7 +193,11 @@ class ProcessExecution(object):
         value = re.sub(r"(\/cygdrive\/)([a-zA-Z]{1})\/", r"\g<2>:/", value)
 
         # normalizing env path separators
+        # drive letters
         value = re.sub(r"(:)([a-zA-Z]{1})(:)", r";\g<2>:", value)
+
+        # UNC paths
+        value = value.replace('://', ';//')
 
         # reverting back to the windows style
         value = value.replace('/', '\\')
