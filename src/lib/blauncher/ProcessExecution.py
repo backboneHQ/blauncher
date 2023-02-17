@@ -299,7 +299,8 @@ class ProcessExecution(object):
                 result.append(arg)
             else:
                 if os.environ.get('BSYS_OS') == 'windows':
-                    arg = ProcessExecution.convertFromCygwin(arg)
+                    # for the execution argument we need to further escape the UNC path
+                    arg = ProcessExecution.convertFromCygwin(arg).replace('\\\\', '\\\\\\\\')
                 result.append('"{}"'.format(arg.replace('"', '\\"')))
 
         return result
