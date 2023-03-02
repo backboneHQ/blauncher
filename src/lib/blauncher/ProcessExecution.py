@@ -9,6 +9,7 @@ class ProcessExecution(object):
     Executes a process.
     """
 
+    __dontSanitizeShellArgsName = '--backbone-dont-sanitize-args'
     # regex: any alpha numeric, underscore and dash characters are allowed.
     __validateShellArgRegex = re.compile("^[\w_-]*$")
 
@@ -285,20 +286,29 @@ class ProcessExecution(object):
             read = read.decode("utf_8", errors="ignore")
         return read
 
-    @staticmethod
-    def __sanitizeShellArgs(args):
+    @classmethod
+    def __sanitizeShellArgs(cls, args):
         """
         Sanitize shell args by escaping shell special characters.
+
+        When the argument --backbone-dont-sanitize-args is passed this process is ignored and
+        the argument automatically removed from the final execution.
         """
         result = []
 
+        dontSanitizeArgs = cls.__dontSanitizeShellArgsName in args
         for index, arg in enumerate(args):
+
+            # since this arg is only supported by backbone we remove it at this point
+            if arg == cls.__dontSanitizeShellArgsName:
+                continue
+
             # we need to avoid to escape the first argument otherwise, it will be
             # interpreted as string rather than a command.
             if index == 0 or ProcessExecution.__validateShellArgRegex.match(arg):
                 result.append(arg)
             else:
-                if os.environ.get('BSYS_OS') == 'windows':
+                if os.environ.get('BSYS_OS') == 'windows' and not dontSanitizeArgs:
                     # for the execution argument we need to further escape the UNC path
                     arg = ProcessExecution.convertFromCygwin(arg).replace('\\\\', '\\\\\\\\')
                 result.append('"{}"'.format(arg.replace('"', '\\"')))
